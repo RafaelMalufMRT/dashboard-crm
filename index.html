@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Máquina de Vendas MRT — Fluxos, automações e limitações</title>
+  <style>
+    :root {
+      --bg: #08111f;
+      --bg-2: #0d1929;
+      --panel: rgba(18, 34, 53, .86);
+      --panel-2: #13263a;
+      --text: #f4f7fb;
+      --muted: #9eb0c4;
+      --line: rgba(174, 198, 224, .17);
+      --brand: #4ee1c1;
+      --brand-2: #78a9ff;
+      --auto: #42d7a4;
+      --approval: #69a5ff;
+      --assisted: #f5b94f;
+      --human: #df82ff;
+      --experimental: #ff8b72;
+      --blocked: #ff647c;
+      --easy: #45d8a8;
+      --medium: #f4bd55;
+      --hard: #ff7f6d;
+      --shadow: 0 28px 80px rgba(0, 0, 0, .32);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 8% -10%, rgba(78,225,193,.14), transparent 32%),
+        radial-gradient(circle at 94% 2%, rgba(120,169,255,.14), transparent 30%),
+        linear-gradient(180deg, var(--bg), #07101b 62%, #091321);
+      color: var(--text);
+      font: 15px/1.55 Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      min-height: 100vh;
+    }
+
+    button, a { font: inherit; }
+    a { color: inherit; }
+    button { color: inherit; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 22px;
+      background: rgba(7, 16, 28, .82);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand-lockup { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .logo {
+      width: 34px; height: 34px; border-radius: 11px;
+      display: grid; place-items: center;
+      color: #05141a; font-weight: 900; letter-spacing: -.06em;
+      background: linear-gradient(135deg, var(--brand), #a6ffe8);
+      box-shadow: 0 10px 30px rgba(78,225,193,.24);
+    }
+    .brand-copy { min-width: 0; }
+    .brand-copy strong { display: block; font-size: 13px; letter-spacing: .03em; }
+    .brand-copy span { color: var(--muted); font-size: 11px; }
+
+    .top-actions { display: flex; gap: 8px; align-items: center; }
+    .action-btn {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      padding: 8px 12px;
+      border-radius: 11px;
+      cursor: pointer;
+      transition: .2s ease;
+    }
+    .action-btn:hover { border-color: rgba(78,225,193,.55); background: rgba(78,225,193,.08); }
+    .action-btn.primary { background: var(--brand); color: #031410; border-color: transparent; font-weight: 800; }
+    .action-btn kbd { opacity: .7; margin-left: 5px; }
+
+    .progress {
+      position: fixed; z-index: 60; top: 0; left: 0; height: 3px;
+      width: 0; background: linear-gradient(90deg, var(--brand), var(--brand-2));
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 254px minmax(0, 1fr);
+      max-width: 1580px;
+      margin: 0 auto;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 59px;
+      height: calc(100vh - 59px);
+      overflow: auto;
+      padding: 27px 18px 40px;
+      border-right: 1px solid var(--line);
+    }
+    .nav-label {
+      color: #6f849a; text-transform: uppercase; letter-spacing: .16em;
+      font-size: 9px; font-weight: 800; margin: 16px 10px 8px;
+    }
+    .nav-link {
+      display: flex; align-items: center; gap: 10px;
+      color: #aebdd0; text-decoration: none;
+      padding: 9px 10px; border-radius: 10px; margin: 2px 0;
+      font-size: 12px; transition: .18s ease;
+    }
+    .nav-link:hover, .nav-link.active { color: white; background: rgba(255,255,255,.06); }
+    .nav-link.active { box-shadow: inset 3px 0 var(--brand); }
+    .nav-index {
+      width: 23px; height: 23px; border-radius: 7px; flex: 0 0 auto;
+      display: grid; place-items: center; font-size: 9px; font-weight: 800;
+      color: var(--brand); background: rgba(78,225,193,.08); border: 1px solid rgba(78,225,193,.2);
+    }
+
+    main { min-width: 0; padding: 0 42px 90px; }
+    .presentation-section { padding: 72px 0 10px; scroll-margin-top: 58px; }
+    .hero { min-height: calc(100vh - 60px); display: flex; flex-direction: column; justify-content: center; }
+
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      width: fit-content; padding: 7px 11px; border-radius: 999px;
+      color: var(--brand); background: rgba(78,225,193,.08); border: 1px solid rgba(78,225,193,.22);
+      font-size: 10px; letter-spacing: .14em; text-transform: uppercase; font-weight: 900;
+    }
+    .eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 15px currentColor; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: clamp(46px, 6.5vw, 86px); line-height: .98; letter-spacing: -.055em; max-width: 1040px; margin: 26px 0 24px; }
+    h1 .accent { color: var(--brand); }
+    .hero-lead { color: #b7c6d8; max-width: 870px; font-size: clamp(18px, 2vw, 24px); line-height: 1.45; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 29px; }
+    .meta-pill { padding: 9px 13px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,.03); font-size: 12px; }
+    .meta-pill strong { color: white; }
+
+    .section-head { display: grid; grid-template-columns: minmax(0,1fr) minmax(260px, 430px); gap: 44px; align-items: end; margin-bottom: 30px; }
+    .section-kicker { color: var(--brand); text-transform: uppercase; letter-spacing: .16em; font-size: 10px; font-weight: 900; margin-bottom: 12px; }
+    h2 { font-size: clamp(34px, 4vw, 58px); line-height: 1.02; letter-spacing: -.045em; margin-bottom: 0; }
+    .section-intro { color: var(--muted); font-size: 16px; margin-bottom: 2px; }
+
+    .grid { display: grid; gap: 14px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .grid-6 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+
+    .card {
+      background: linear-gradient(145deg, rgba(20,39,59,.92), rgba(12,25,41,.88));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 22px;
+      box-shadow: 0 15px 50px rgba(0,0,0,.12);
+    }
+    .card:hover { border-color: rgba(158,176,196,.28); }
+    .card h3 { font-size: 19px; line-height: 1.2; margin: 10px 0 9px; letter-spacing: -.02em; }
+    .card p { color: var(--muted); margin: 0; }
+
+    .flow-card { position: relative; overflow: hidden; min-height: 235px; display: flex; flex-direction: column; }
+    .flow-card::after {
+      content: ""; position: absolute; width: 150px; height: 150px; right: -65px; top: -65px;
+      background: radial-gradient(circle, rgba(78,225,193,.16), transparent 70%); pointer-events: none;
+    }
+    .flow-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .flow-num { font-size: 10px; color: var(--brand); font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
+    .kind { font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: .1em; padding: 5px 8px; border-radius: 999px; background: rgba(120,169,255,.1); color: #9ec0ff; }
+    .flow-card .route { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #7f94a9; margin-top: 15px; }
+    .flow-card .card-foot { margin-top: auto; padding-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .go-link { color: var(--brand); text-decoration: none; font-weight: 800; font-size: 11px; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 8px; border-radius: 999px;
+      font-size: 9px; text-transform: uppercase; letter-spacing: .08em; font-weight: 900;
+      white-space: nowrap; border: 1px solid transparent;
+    }
+    .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .badge.auto { color: var(--auto); background: rgba(66,215,164,.08); border-color: rgba(66,215,164,.22); }
+    .badge.approval { color: var(--approval); background: rgba(105,165,255,.09); border-color: rgba(105,165,255,.22); }
+    .badge.assisted { color: var(--assisted); background: rgba(245,185,79,.08); border-color: rgba(245,185,79,.22); }
+    .badge.human { color: var(--human); background: rgba(223,130,255,.08); border-color: rgba(223,130,255,.22); }
+    .badge.experimental { color: var(--experimental); background: rgba(255,139,114,.08); border-color: rgba(255,139,114,.22); }
+    .badge.blocked { color: var(--blocked); background: rgba(255,100,124,.08); border-color: rgba(255,100,124,.22); }
+
+    .difficulty { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 800; color: var(--muted); }
+    .difficulty::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: currentColor; }
+    .difficulty.easy { color: var(--easy); }
+    .difficulty.medium { color: var(--medium); }
+    .difficulty.hard { color: var(--hard); }
+
+    .legend-card { padding: 20px; }
+    .legend-card .badge { margin-bottom: 13px; }
+    .legend-card strong { display: block; font-size: 14px; margin-bottom: 4px; }
+    .legend-card p { font-size: 12px; }
+
+    .principle {
+      padding: 24px 26px; border-radius: var(--radius); margin-top: 16px;
+      background: linear-gradient(105deg, rgba(78,225,193,.12), rgba(120,169,255,.07));
+      border: 1px solid rgba(78,225,193,.24);
+      display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: start;
+    }
+    .principle .mark { font-size: 28px; color: var(--brand); line-height: 1; }
+    .principle strong { display: block; font-size: 17px; margin-bottom: 4px; }
+    .principle p { color: #b4c5d6; margin: 0; }
+
+    .flow-summary {
+      display: grid; grid-template-columns: 1.35fr .65fr; gap: 16px; margin-bottom: 16px;
+    }
+    .summary-main { padding: 27px; }
+    .summary-main .route { color: var(--brand); font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 12px 0 18px; }
+    .summary-main p { max-width: 820px; }
+    .summary-side { display: grid; gap: 9px; }
+    .metric { padding: 15px 17px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.025); }
+    .metric span { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: .12em; color: #71869d; font-weight: 900; }
+    .metric strong { display: block; margin-top: 4px; font-size: 13px; }
+
+    .step-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 24px 0 14px; }
+    .filter-btn {
+      cursor: pointer; border: 1px solid var(--line); color: var(--muted); background: transparent;
+      border-radius: 999px; padding: 7px 10px; font-size: 10px; font-weight: 800;
+    }
+    .filter-btn:hover, .filter-btn.active { color: white; background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.23); }
+
+    .steps { display: grid; gap: 9px; }
+    .step {
+      display: grid;
+      grid-template-columns: 62px minmax(150px, .78fr) 126px minmax(210px, 1.3fr) minmax(190px, 1fr) 92px;
+      gap: 13px; align-items: center;
+      min-height: 76px; padding: 13px 15px;
+      border: 1px solid var(--line); border-radius: 15px;
+      background: rgba(16,31,49,.68);
+      transition: opacity .2s ease, transform .2s ease, border-color .2s ease;
+    }
+    .step:hover { border-color: rgba(78,225,193,.28); transform: translateX(2px); }
+    .step.filtered-out { opacity: .12; }
+    .step-code { font: 10px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: #70869d; }
+    .step-title { font-weight: 800; font-size: 13px; line-height: 1.25; }
+    .step-copy { color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .step-copy strong { display: block; color: #c5d1df; font-size: 9px; text-transform: uppercase; letter-spacing: .09em; margin-bottom: 3px; }
+
+    .callouts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; margin-top: 16px; }
+    .callout { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.025); }
+    .callout .label { color: var(--brand); font-size: 9px; text-transform: uppercase; letter-spacing: .13em; font-weight: 900; }
+    .callout strong { display: block; margin: 7px 0 5px; font-size: 13px; }
+    .callout p { margin: 0; color: var(--muted); font-size: 11px; }
+
+    .integration-table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
+    .integration-table th { text-align: left; font-size: 9px; color: #71869d; text-transform: uppercase; letter-spacing: .13em; padding: 0 12px 6px; }
+    .integration-table td { padding: 14px 12px; background: rgba(16,31,49,.68); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); vertical-align: top; font-size: 11px; color: var(--muted); }
+    .integration-table td:first-child { border-left: 1px solid var(--line); border-radius: 13px 0 0 13px; color: white; font-weight: 800; }
+    .integration-table td:last-child { border-right: 1px solid var(--line); border-radius: 0 13px 13px 0; }
+
+    .roadmap { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 12px; }
+    .phase { padding: 21px; border: 1px solid var(--line); border-radius: 18px; background: rgba(16,31,49,.75); }
+    .phase .phase-no { color: var(--brand); font: 10px ui-monospace, monospace; }
+    .phase h3 { font-size: 17px; margin: 10px 0 8px; }
+    .phase p { color: var(--muted); font-size: 11px; }
+    .phase ul { padding-left: 17px; color: #b6c4d3; font-size: 11px; }
+
+    .decision-box { padding: 28px; border: 1px solid rgba(78,225,193,.28); border-radius: 22px; background: rgba(78,225,193,.07); }
+    .decision-box h3 { font-size: 22px; margin-bottom: 12px; }
+    .decision-box p { color: #bdcddd; font-size: 15px; }
+    .decision-box ol { color: #d5dfe9; padding-left: 20px; }
+    .decision-box li { margin: 7px 0; }
+
+    .footer { color: #6f8398; border-top: 1px solid var(--line); padding: 34px 0; margin-top: 70px; font-size: 11px; display: flex; justify-content: space-between; gap: 30px; }
+
+    .presentation-controls { display: none; }
+    body.presenting { overflow: hidden; }
+    body.presenting .topbar, body.presenting .sidebar { display: none; }
+    body.presenting .layout { display: block; max-width: none; }
+    body.presenting main { padding: 0; }
+    body.presenting .presentation-section {
+      display: none; height: 100vh; overflow: auto; padding: 55px 6vw 80px;
+    }
+    body.presenting .presentation-section.active-slide { display: block; }
+    body.presenting .hero { min-height: calc(100vh - 130px); }
+    body.presenting .presentation-controls {
+      display: flex; position: fixed; z-index: 100; right: 24px; bottom: 20px;
+      align-items: center; gap: 8px; padding: 7px; border-radius: 14px;
+      background: rgba(6,14,24,.88); border: 1px solid var(--line); backdrop-filter: blur(15px);
+    }
+    .slide-count { color: var(--muted); font-size: 11px; padding: 0 7px; }
+
+    @media (max-width: 1120px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      main { padding: 0 25px 70px; }
+      .step { grid-template-columns: 55px minmax(140px, 1fr) 120px minmax(180px, 1.5fr); }
+      .step .human-action, .step .difficulty { display: none; }
+      .roadmap { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    }
+    @media (max-width: 740px) {
+      .topbar { padding: 10px 13px; }
+      .brand-copy span, .action-btn kbd, #printBtn { display: none; }
+      main { padding: 0 15px 50px; }
+      .presentation-section { padding-top: 54px; }
+      .section-head, .flow-summary { grid-template-columns: 1fr; gap: 18px; }
+      .grid-2, .grid-3, .grid-6, .callouts, .roadmap { grid-template-columns: 1fr; }
+      .step { grid-template-columns: 45px 1fr; gap: 8px; }
+      .step .badge, .step .step-copy, .step .difficulty { grid-column: 2; }
+      .step .human-action { display: block; }
+      .integration-table { display: block; overflow-x: auto; }
+      h1 { font-size: 44px; }
+      .footer { flex-direction: column; }
+    }
+
+    @media print {
+      :root { --bg: #fff; --text: #132036; --muted: #526274; --line: #d8e0e8; --panel: #fff; }
+      body { background: white; color: #132036; font-size: 10px; }
+      .topbar, .sidebar, .step-toolbar, .presentation-controls, .progress { display: none !important; }
+      .layout { display: block; }
+      main { padding: 0 12mm; }
+      .presentation-section { padding: 10mm 0 2mm; break-before: page; }
+      .hero { min-height: auto; break-before: auto; }
+      .card, .step, .phase, .callout, .metric, .decision-box { background: white; box-shadow: none; break-inside: avoid; }
+      .step { grid-template-columns: 45px 130px 95px 1fr 1fr 75px; min-height: 0; }
+      .section-head { grid-template-columns: 1fr 340px; }
+      h1 { font-size: 44px; }
+      h2 { font-size: 30px; }
+      .footer { break-before: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="progress" id="progress"></div>
+  <header class="topbar">
+    <div class="brand-lockup">
+      <div class="logo">M</div>
+      <div class="brand-copy"><strong>Máquina de Vendas MRT</strong><span>Fluxos, viabilidade e plano de automação</span></div>
+    </div>
+    <div class="top-actions">
+      <button class="action-btn" id="printBtn" type="button">Imprimir / PDF</button>
+      <button class="action-btn primary" id="presentBtn" type="button">Apresentar <kbd>P</kbd></button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main>
+      <section class="presentation-section hero" id="inicio" data-nav="Visão geral">
+        <span class="eyebrow">Relatório executivo · 14 set 2026</span>
+        <h1>Uma máquina comercial com <span class="accent">automação responsável</span>.</h1>
+        <p class="hero-lead">Seis fluxos de aquisição e prospecção transformados em uma operação única: o CRM automatiza o que as APIs permitem, prepara o que exige uma pessoa e preserva todo o histórico até a oportunidade.</p>
+        <div class="hero-meta">
+          <span class="meta-pill"><strong>3</strong> fluxos inbound</span>
+          <span class="meta-pill"><strong>3</strong> fluxos outbound</span>
+          <span class="meta-pill"><strong>Lu e Mirto</strong> primeiro corte</span>
+          <span class="meta-pill"><strong>crm.mrtmarketplace.com.br</strong> aplicação própria</span>
+        </div>
+        <div class="principle">
+          <div class="mark">→</div>
+          <div><strong>Assistido não é manual desorganizado.</strong><p>O CRM prepara contexto, texto, arquivos, prazo e próximo passo. A pessoa faz somente o clique obrigatório ou a decisão que exige julgamento.</p></div>
+        </div>
+      </section>
+
+      <section class="presentation-section" id="mapa" data-nav="Mapa dos fluxos">
+        <div class="section-head">
+          <div><div class="section-kicker">Mapa completo</div><h2>Seis portas de entrada. Um único CRM.</h2></div>
+          <p class="section-intro">Os fluxos usam o mesmo cadastro de empresas e pessoas, a mesma timeline, a mesma fila de tarefas e o mesmo pipeline. O que muda é a origem e a cadência.</p>
+        </div>
+        <div class="grid grid-6" id="flowCards"></div>
+      </section>
+
+      <section class="presentation-section" id="legenda" data-nav="Como ler">
+        <div class="section-head">
+          <div><div class="section-kicker">Vocabulário comum</div><h2>O que realmente será automatizado?</h2></div>
+          <p class="section-intro">Ter um endpoint ou conseguir simular cliques não basta. Cada etapa foi classificada pela API oficial, política do canal, risco e necessidade de julgamento.</p>
+        </div>
+        <div class="grid grid-3" id="legendGrid"></div>
+        <div class="callouts">
+          <div class="callout"><span class="label">Limitação de política</span><strong>Não se contorna</strong><p>Ex.: convite e DM do LinkedIn. O desenho permanece assistido enquanto não houver acesso oficial.</p></div>
+          <div class="callout"><span class="label">Limitação de acesso</span><strong>Pode evoluir</strong><p>Ex.: App Review ou auditoria. Começa assistido e automatiza depois da aprovação.</p></div>
+          <div class="callout"><span class="label">Limitação de julgamento</span><strong>Humano continua dono</strong><p>Ex.: negociação, relevância de pauta, merge incerto e afirmações do diagnóstico.</p></div>
+        </div>
+      </section>
+
+      <section class="presentation-section" id="inbound-comum" data-nav="Funil inbound comum">
+        <div class="section-head">
+          <div><div class="section-kicker">Motor compartilhado</div><h2>Funil inbound comum</h2></div>
+          <p class="section-intro">Lu, Mirto e Relações Públicas convergem no mesmo caminho depois da conversão. Essa fundação será construída uma vez.</p>
+        </div>
+        <div class="flow-summary">
+          <div class="card summary-main"><span class="badge auto">Alta viabilidade</span><div class="route">conteúdo/origem → formulário → diagnóstico → contato → reunião → oportunidade</div><p>Todo o núcleo é viável. As exceções aparecem no consentimento do WhatsApp, na aprovação do diagnóstico e nas decisões comerciais.</p></div>
+          <div class="summary-side">
+            <div class="metric"><span>Primeiro corte</span><strong>Site + CRM + Resend + tarefas</strong></div>
+            <div class="metric"><span>Complexidade</span><strong>Moderada</strong></div>
+            <div class="metric"><span>Maior cuidado</span><strong>Consentimento, deduplicação e pausa</strong></div>
+          </div>
+        </div>
+        <div class="step-toolbar" data-filter-for="inboundSteps"></div>
+        <div class="steps" id="inboundSteps"></div>
+      </section>
+
+      <div id="flowSections"></div>
+
+      <section class="presentation-section" id="integracoes" data-nav="Integrações">
+        <div class="section-head">
+          <div><div class="section-kicker">Conexões externas</div><h2>O que cada integração permite</h2></div>
+          <p class="section-intro">A estratégia nunca depende de uma aprovação externa para entregar valor. Toda integração incerta possui um caminho assistido.</p>
+        </div>
+        <table class="integration-table" id="integrationTable"></table>
+      </section>
+
+      <section class="presentation-section" id="roadmap" data-nav="Ordem de construção">
+        <div class="section-head">
+          <div><div class="section-kicker">Recomendação</div><h2>Construir valor em cortes demonstráveis</h2></div>
+          <p class="section-intro">O outbound já nasce previsto no modelo, mas Lu e Mirto provam primeiro o circuito completo de conteúdo até oportunidade.</p>
+        </div>
+        <div class="roadmap">
+          <div class="phase"><span class="phase-no">FASE 0 · 2–3 DIAS</span><h3>Decisões e acessos</h3><p>Fechar o que muda regra ou responsabilidade.</p><ul><li>owners e papéis</li><li>pipeline e qualificação</li><li>consentimentos</li><li>cadências</li></ul></div>
+          <div class="phase"><span class="phase-no">FASE 1 · 8–12 DIAS ACUM.</span><h3>CRM comercial</h3><p>Primeiro uso interno real.</p><ul><li>empresas e pessoas</li><li>fila e timeline</li><li>oportunidade</li><li>auditoria</li></ul></div>
+          <div class="phase"><span class="phase-no">FASE 2 · 15–25 DIAS ACUM.</span><h3>Lu e Mirto</h3><p>Conteúdo até reunião e pipeline.</p><ul><li>CTA e formulário</li><li>diagnóstico</li><li>comunicação</li><li>atribuição</li></ul></div>
+          <div class="phase"><span class="phase-no">FASE 3 · 25–40 DIAS ACUM.</span><h3>Outbound</h3><p>JoomPulse e contato controlado.</p><ul><li>sinais/evidências</li><li>deduplicação</li><li>LinkedIn assistido</li><li>reativação</li></ul></div>
+        </div>
+        <div class="principle">
+          <div class="mark">✓</div>
+          <div><strong>Primeiro valor em aproximadamente duas semanas.</strong><p>Faixa provável para Lu e Mirto ponta a ponta: 3–5 semanas. Aprovações de plataformas ficam fora dos dias técnicos e não bloqueiam o fluxo assistido.</p></div>
+        </div>
+      </section>
+
+      <section class="presentation-section" id="decisao" data-nav="Decisão proposta">
+        <div class="section-head">
+          <div><div class="section-kicker">Fechamento</div><h2>O que precisamos aprovar hoje</h2></div>
+          <p class="section-intro">O desenho técnico está pronto. As próximas decisões são operacionais e permitem congelar o primeiro corte.</p>
+        </div>
+        <div class="decision-box">
+          <h3>Decisão proposta</h3>
+          <ol>
+            <li>CRM independente em <strong>crm.mrtmarketplace.com.br</strong>.</li>
+            <li><strong>Lu e Mirto</strong> como primeiros fluxos reais.</li>
+            <li>Operação <strong>híbrida</strong> como desenho oficial onde as APIs ou o julgamento exigirem.</li>
+            <li>Fechar responsáveis, pipeline, consentimentos e cadências antes da implementação.</li>
+            <li>Validar <strong>JoomPulse + Claude/VPS</strong> em um spike antes de prometer outbound desassistido.</li>
+            <li>Não esperar publicadores sociais completos para começar a usar o CRM.</li>
+          </ol>
+        </div>
+        <div class="callouts">
+          <div class="callout"><span class="label">Fazer agora</span><strong>CRM + Lu/Mirto</strong><p>Dados, fila, timeline, inbound, diagnóstico, comunicação, reunião e oportunidade.</p></div>
+          <div class="callout"><span class="label">Depois</span><strong>Outbound e publishers</strong><p>Entram sobre a fundação já validada e somente após os spikes necessários.</p></div>
+          <div class="callout"><span class="label">Não fazer</span><strong>Atalhos frágeis</strong><p>Scraping, automação de navegador, WhatsApp frio e dependência de credencial pessoal compartilhada.</p></div>
+        </div>
+      </section>
+
+      <footer class="footer"><span>Máquina de Vendas MRT · Relatório de apresentação</span><span>Baseado no mapeamento técnico concluído em 14/09/2026</span></footer>
+    </main>
+  </div>
+
+  <div class="presentation-controls">
+    <button class="action-btn" id="prevSlide" type="button">←</button>
+    <span class="slide-count" id="slideCount"></span>
+    <button class="action-btn" id="nextSlide" type="button">→</button>
+    <button class="action-btn" id="exitPresent" type="button">Sair</button>
+  </div>
+
+  <script>
+    const modes = {
+      auto: { label: 'Automática', title: 'Automática oficial', text: 'O CRM executa por regra, API ou webhook e registra o resultado.' },
+      approval: { label: 'Com aprovação', title: 'Automática com aprovação', text: 'O CRM prepara; uma pessoa aprova; então o sistema executa.' },
+      assisted: { label: 'Assistida', title: 'Assistida', text: 'O CRM prepara tudo; a pessoa conclui a ação no canal e confirma.' },
+      human: { label: 'Humana', title: 'Humana', text: 'A atividade exige julgamento, relacionamento ou trabalho criativo.' },
+      experimental: { label: 'Experimental', title: 'Experimental', text: 'Parece viável, mas depende de spike, conta, permissão ou contrato.' },
+      blocked: { label: 'Não fazer', title: 'Bloqueada / não fazer', text: 'A política, privacidade ou ausência de acesso torna o atalho inadequado.' }
+    };
+
+    const difficulties = {
+      easy: 'Tranquila', medium: 'Moderada', hard: 'Complexa'
+    };
+
+    const inboundSteps = [
+      ['I-01','Receber conversão','auto','easy','Persiste formulário e cria um caso idempotente.','Acompanha apenas exceções.'],
+      ['I-02','Registrar atribuição','auto','easy','Grava UTM, CTA, conteúdo, canal e referrer.','Nenhuma ação recorrente.'],
+      ['I-03','Identificar pessoa e empresa','approval','medium','Deduplica por chaves fortes; sugere vínculo se ambíguo.','Confirma somente casos incertos.'],
+      ['I-04','Validar dados mínimos','auto','easy','Aplica regras do formulário e marca completo/incompleto.','Nenhuma, salvo correção.'],
+      ['I-05','Completar cadastro','assisted','medium','Pesquisa e sugere os campos faltantes com fontes.','Revisa e confirma dados relevantes.'],
+      ['I-06','Montar diagnóstico','approval','hard','Claude gera versão estruturada com fatos e evidências.','Aprova afirmações e recomendação.'],
+      ['I-07','Entregar diagnóstico','auto','easy','Resend envia, rastreia status e tenta novamente com segurança.','Trata falha definitiva.'],
+      ['I-08','Inscrever na newsletter','auto','easy','Inscreve apenas com opt-in específico e sem supressão.','Nenhuma ação por lead.'],
+      ['I-09','Iniciar WhatsApp','approval','hard','Valida opt-in, janela e template antes de criar o envio.','Aprova template/primeiro uso; trata bloqueios.'],
+      ['I-10','Detectar resposta','auto','medium','Webhook/histórico pausa a cadência nos canais integrados.','Confirma manualmente no LinkedIn.'],
+      ['I-11','Tratar objeção','human','medium','Mostra histórico e pode sugerir resposta.','Interpreta e conduz a conversa.'],
+      ['I-12','Convidar para reunião','approval','medium','Sugere horários e prepara convite após interesse.','Confirma momento e participantes.'],
+      ['I-13','Registrar agenda','auto','easy','Cria/sincroniza evento e vínculo com oportunidade.','Resolve conflito excepcional.'],
+      ['I-14','Registrar realização','human','easy','Exibe formulário de outcome e próximo passo.','Marca realizada, no-show ou cancelada.'],
+      ['I-15','Combinado pré-proposta','human','medium','Organiza campos e documentos da decisão.','Define escopo, participantes e próximos passos.'],
+      ['I-16','Qualificar','human','medium','Guia perguntas e aplica critérios configurados.','Decide fit, momento e potencial.'],
+      ['I-17','Criar oportunidade','auto','easy','Converte após confirmação positiva e preserva a origem.','Confirma a qualificação.'],
+      ['I-18','Proposta e negociação','human','hard','Controla versão, valor, estágio e próxima ação.','Negocia e decide condições.'],
+      ['I-19','Pedir indicação','human','easy','Cria tarefa no momento configurado.','Faz o pedido de forma contextual.'],
+      ['I-20','Nutrir e reativar','auto','medium','Segmenta, agenda conteúdo e espera novo sinal.','Revisa exceções e respostas.']
+    ];
+
+    const flows = [
+      {
+        id:'lu', no:'01', kind:'Inbound', title:'Social Selling — Lu', short:'Vídeo-mãe vira peças, captura e oportunidade.',
+        route:'vídeo → derivados → CTA → diagnóstico → reunião', viability:'Alta', complexity:'Moderada', cut:'Prioridade 1', constraint:'LinkedIn/publicação começam assistidos',
+        overview:'O vídeo de Luciano é a peça-mãe. Instagram, Short e LinkedIn geram CTAs separados e convergem no funil inbound comum.',
+        calm:'CTA, formulários, atribuição, Resend, tarefas e pipeline.', tricky:'Edição, aprovação do diagnóstico e publicadores sociais.',
+        steps:[
+          ['LU-01','Gravar vídeo-mãe','human','medium','Cria pauta, checklist, agenda e registro do asset.','Luciano grava e aprova a origem.'],
+          ['LU-02','Transcrever e analisar','approval','easy','Claude transcreve, resume e propõe teses com timestamps.','Revisa erros e escolhe o que representa sua visão.'],
+          ['LU-03','Classificar insights e cortes','approval','easy','Sugere cortes, gancho, tese e canal apropriado.','Seleciona os melhores e descarta os fracos.'],
+          ['LU-04','Criar carrossel','assisted','medium','Gera copy, estrutura, briefing e assets necessários.','Designer/Lu finaliza e aprova visual.'],
+          ['LU-05','Publicar no Instagram','assisted','medium','Entrega mídia, legenda, hashtags, CTA e abre o destino.','Confirma conta, publica e registra a URL.'],
+          ['LU-06','Registrar CTA Instagram','auto','easy','Gera link/UTM e vincula publicação, oferta e autor.','Nenhuma ação além de usar o link.'],
+          ['LU-07','Editar corte vertical','assisted','medium','Gera roteiro de corte, SRT, gancho, CTA e especificações.','Editor faz corte fino e exporta no CapCut/Pippit.'],
+          ['LU-08','Publicar Short','assisted','medium','Entrega título, descrição, thumbnail e checklist.','Publica; API pode assumir depois da auditoria.'],
+          ['LU-09','Registrar CTA Short','auto','easy','Cria e associa tracking link específico.','Nenhuma.'],
+          ['LU-10','Transformar tese em post','approval','easy','Claude redige opções apoiadas no vídeo e nas evidências.','Luciano escolhe, edita e aprova.'],
+          ['LU-11','Publicar no LinkedIn','assisted','medium','Entrega texto/mídia, abre tela e depois pede a URL.','Publica no próprio perfil; OAuth pode automatizar depois.'],
+          ['LU-12','Registrar CTA LinkedIn','auto','easy','Preserva origem até lead e oportunidade.','Nenhuma.'],
+          ['LU→I','Executar funil inbound','auto','medium','Aciona I-01 a I-20 quando ocorre a conversão.','Atua nas aprovações e conversas do funil.']
+        ]
+      },
+      {
+        id:'mirto', no:'02', kind:'Inbound', title:'Social Selling — Mirto', short:'Aquisição, autoridade, TikTok, blog e PR.',
+        route:'vídeo → social/blog/newsletter → pauta → inbound', viability:'Alta', complexity:'Moderada–alta', cut:'Prioridade 1', constraint:'TikTok e edição permanecem assistidos',
+        overview:'Reutiliza o fluxo de Lu e adiciona TikTok adaptado, conteúdo de autoridade, newsletter, blog e uma frente controlada de pautas.',
+        calm:'Núcleo compartilhado, blog por deploy, newsletter e controle mensal.', tricky:'Adaptação TikTok, pauta, jornalistas e detecção confiável de matéria.',
+        steps:[
+          ['MI-01','Gravar vídeo-mãe','human','medium','Organiza pauta, agenda, asset e versões.','Mirto grava e aprova.'],
+          ['MI-02','Analisar conteúdo','approval','easy','Claude transcreve e propõe argumentos/trechos.','Revisa o sentido e os fatos.'],
+          ['MI-03','Identificar peças','approval','easy','Sugere cortes e variações por canal.','Prioriza as que entram no calendário.'],
+          ['MI-04','Carrossel Instagram','assisted','medium','Prepara copy, briefing, CTA e pacote.','Finaliza visual, aprova e publica.'],
+          ['MI-05','YouTube Short','assisted','medium','Prepara roteiro, metadata e checklist.','Editor fecha; operador publica/confirma.'],
+          ['MI-06','TikTok adaptado','assisted','hard','Cria variante própria e pode enviar ao inbox pela Upload API.','Revisa áudio, capa, disclosure e publica no app.'],
+          ['MI-07','Extrair tese de autoridade','approval','medium','Estrutura tese, claims e evidências.','Valida posicionamento e afirmações.'],
+          ['MI-08','Newsletter e blog','approval','medium','Cria drafts, segmentos, preview e tracking.','Aprova edição; sistema envia/publica quando integrado.'],
+          ['MI-09','Avaliar potencial de pauta','approval','medium','Pontua novidade, relevância, dados e porta-voz.','Decide se vale esforço de PR.'],
+          ['MI-10','Decidir relevância','human','medium','Exibe avaliação e histórico mensal.','Aprova ou registra por que não usar.'],
+          ['MI-11','Preparar pauta','assisted','hard','Monta tese, dados, ângulo, jornalistas e rascunho.','Personaliza e aprova a abordagem.'],
+          ['MI-12','Controlar rodada mensal','auto','easy','Impede mais de uma rodada no período configurado.','Autoriza exceção, se necessária.'],
+          ['MI-13','Enviar a jornalistas','approval','medium','Gera drafts e envia por e-mail após aprovação.','Confere destinatário e libera a rodada.'],
+          ['MI-14','Detectar publicação','approval','hard','Monitora fontes e cria candidata com URL/trecho.','Confirma que é a matéria correta.'],
+          ['MI-15','Entregar ao fluxo PR','auto','easy','Cria evento e preserva origem, veículo e jornalista.','Nenhuma ação recorrente.'],
+          ['MI→I','Executar funil inbound','auto','medium','Conversões seguem I-01 a I-20.','Atua nas aprovações e conversas.']
+        ]
+      },
+      {
+        id:'pr', no:'03', kind:'Inbound', title:'Relações Públicas', short:'Menção externa vira autoridade, captura e negócio.',
+        route:'menção → avaliação → apoio → oferta → inbound', viability:'Alta, híbrida', complexity:'Moderada', cut:'Após base de Mirto', constraint:'Relevância e relacionamento são humanos',
+        overview:'O CRM monitora e organiza oportunidades de mídia, mas uma pessoa decide relevância e conduz a relação. E-book, newsletter e diagnóstico preservam intenções diferentes.',
+        calm:'Cadastro de menção, histórico, CTA, atribuição e passagem ao inbound.', tricky:'Monitoramento de fontes, relevância editorial e confirmação de publicação.',
+        steps:[
+          ['PR-01','Monitorar menções','experimental','hard','Executa buscas agendadas e cria candidatas com fonte e data.','Ajusta fontes/termos e revisa falsos positivos.'],
+          ['PR-02','Identificar oportunidade','approval','medium','Claude resume contexto, alcance, ângulo e risco.','Valida se há oportunidade real.'],
+          ['PR-03','Decidir relevância','human','medium','Mostra evidências e possíveis destinos.','Decide usar ou não usar.'],
+          ['PR-04','Registrar não utilizada','auto','easy','Guarda motivo, aprovador e histórico para não repetir.','Seleciona o motivo.'],
+          ['PR-05','Escolher destino','approval','medium','Sugere página, Instagram, e-book, newsletter ou diagnóstico.','Confirma oferta e linguagem.'],
+          ['PR-06','Publicar apoio','assisted','medium','Prepara peça, CTA, UTM e checklist de publicação.','Aprova/publica quando o publisher não estiver ativo.'],
+          ['PR-07','Oferta de e-book','auto','easy','Entrega material e nutre sem tratar como pedido de reunião.','Atende se houver resposta.'],
+          ['PR-08','Oferta de newsletter','auto','easy','Inscreve somente com consentimento específico.','Nenhuma ação recorrente.'],
+          ['PR-09','Oferta de diagnóstico','auto','medium','Cria lead de alta intenção e inicia funil comum.','Aprova diagnóstico e conduz conversa.']
+        ]
+      },
+      {
+        id:'outbound-1', no:'04', kind:'Outbound', title:'Produto em alta', short:'JoomPulse encontra demanda; CRM chega à indústria.',
+        route:'produto → indústria → decisor → LinkedIn → oportunidade', viability:'Alta após spike', complexity:'Alta', cut:'Primeiro outbound', constraint:'JoomPulse desassistido e LinkedIn precisam de controle',
+        overview:'O sinal do JoomPulse inicia uma pesquisa estruturada. A empresa só entra em prospecção depois de evidência e revisão; o LinkedIn permanece assistido.',
+        calm:'Consolidação, score, fila, timers, timeline e reativação.', tricky:'Identidade da empresa, “loja oficial”, contrato/cota do MCP e LinkedIn.',
+        steps:[
+          ['JP-01','Capturar produto em alta','experimental','hard','Chama JoomPulse via Claude/VPS e valida schema/evidência.','Revisa o lote no início e trata exceções.'],
+          ['JP-02','Identificar indústria','approval','hard','Cruza seller, marca, site, domínio e CNPJ; propõe candidata.','Confirma a empresa correta.'],
+          ['JP-03','Verificar loja oficial','approval','hard','Reúne marketplace, site e sinais; marca inconclusivo quando necessário.','Confirma sobretudo conclusões negativas.'],
+          ['JP-04','Consolidar empresa','approval','medium','Deduplica por chaves fortes e sugere merge.','Aprova merge ambíguo.'],
+          ['JP-05','Pesquisar empresa','approval','medium','Cria dossiê com fontes, data e hipóteses.','Valida fatos usados na abordagem.'],
+          ['JP-06','Mapear decisores','assisted','hard','Sugere pessoas, cargos, perfil e evidência pública.','Confirma identidade e prioridade.'],
+          ['JP-07','Ordenar P1…Pn','auto','easy','Calcula fila explicável por senioridade/poder.','Pode ajustar justificadamente.'],
+          ['JP-08','Ativar uma pessoa','auto','easy','Garante apenas um decisor ativo por empresa.','Nenhuma ação recorrente.'],
+          ['JP-09','Enviar convite sem nota','assisted','medium','Abre perfil e apresenta contexto/checklist.','Clica em conectar e confirma o envio.'],
+          ['JP-10','Aguardar 15 dias','assisted','easy','Agenda tarefa no prazo correto.','Confere no LinkedIn se houve aceite.'],
+          ['JP-11','Avançar decisor','auto','easy','Se não aceitou, fecha o alvo e ativa o próximo.','Confirma resultado anterior.'],
+          ['JP-D0','Mensagem inicial','assisted','medium','Claude prepara texto baseado na evidência aprovada.','Revisa, envia e confirma.'],
+          ['JP-D7','Follow-up com dado','assisted','medium','Prepara raio-x contextual e cria tarefa.','Revisa, envia e confirma.'],
+          ['JP-D14','Encerramento','assisted','easy','Prepara fechamento respeitoso e agenda.','Envia ou encerra.'],
+          ['JP-D21','Fechar sem resposta','auto','easy','Conclui cadência e agenda reativação futura.','Nenhuma, salvo exceção.'],
+          ['JP-R','Resposta/qualificação','human','medium','Pausa tudo, exibe dossiê e roteiro de qualificação.','Conduz conversa e decide oportunidade.']
+        ]
+      },
+      {
+        id:'outbound-2', no:'05', kind:'Outbound', title:'Muita venda, sem loja oficial', short:'Varredura ampla consolida múltiplos produtos por empresa.',
+        route:'lote → seller/marca → empresa → score → outbound 01', viability:'Alta após definição', complexity:'Muito alta', cut:'Segundo outbound', constraint:'Cadência contraditória e identidade mais ambígua',
+        overview:'É uma versão em lote e mais incerta do outbound 01. Precisa tolerar itens não identificados, falha parcial e múltiplos produtos fortalecendo a mesma conta.',
+        calm:'Persistência de lote, consolidação, score e retomada por item.', tricky:'Resolução seller→marca→empresa, critérios de alta venda e cadência conflitante.',
+        steps:[
+          ['MV-01','Varrer JoomPulse','experimental','hard','Executa lote paginado, controla cota e persiste progresso.','Define categoria/período e revisa amostra.'],
+          ['MV-02','Selecionar alta venda','approval','hard','Aplica política versionada e mostra contribuição dos sinais.','Aprova critério numérico inicial.'],
+          ['MV-03','Resolver seller/marca','approval','hard','Propõe identidade preservando marketplace e fonte.','Corrige falsos positivos.'],
+          ['MV-04','Testar se chega à empresa','approval','hard','Atribui confiança e envia ambíguos à pesquisa profunda.','Decide quando evidência basta.'],
+          ['MV-05','Pesquisar CNPJ/domínio/redes','assisted','hard','Cria candidatos e evidências sem sobrescrever dados canônicos.','Valida a entidade legal/comercial.'],
+          ['MV-06','Registrar não identificada','auto','easy','Mantém fila UNRESOLVED e agenda revisão futura.','Pode adicionar nova pista.'],
+          ['MV-07','Verificar loja oficial','approval','hard','Aplica a mesma revisão do outbound 01.','Confirma inconclusivos/negativos.'],
+          ['MV-08','Registrar produto e sinal','auto','easy','Vincula sem duplicar e guarda janela da métrica.','Nenhuma ação recorrente.'],
+          ['MV-09','Consolidar produtos','auto','medium','Agrupa sinais da mesma empresa e recalcula prioridade.','Revisa merge ambíguo.'],
+          ['MV-10','Priorizar empresas','auto','medium','Score explicável por volume, tração e quantidade de sinais.','Ajusta regra, não número individual silencioso.'],
+          ['MV-C','Aprovar versão da cadência','human','hard','Mantém versões draft: intervalos, follow-ups, troca e despedida.','Escolhe entre regras conflitantes do artifact.'],
+          ['MV→JP','Executar outbound 01','assisted','medium','Ativa decisor e agenda a versão aprovada.','Executa LinkedIn e conduz respostas.']
+        ]
+      },
+      {
+        id:'outbound-3', no:'06', kind:'Outbound', title:'Marca de influenciador', short:'Prova vínculo e escolhe o próximo canal elegível.',
+        route:'marca → vínculo → marketplace → canais → contato', viability:'Média–alta', complexity:'Muito alta', cut:'Terceiro outbound', constraint:'27 toques e WhatsApp frio não serão reproduzidos',
+        overview:'O CRM separa marca, empresa, dono e influenciador, prova a relação e percorre somente canais permitidos. Qualquer resposta interrompe toda a escada.',
+        calm:'Ordem, frequência, pausa global, histórico e reativação.', tricky:'Provar vínculo, localizar canal profissional e respeitar políticas multicanal.',
+        steps:[
+          ['IF-01','Descobrir marca','approval','hard','Pesquisa social/web e cria candidata com fontes.','Confirma relevância e existência comercial.'],
+          ['IF-02','Provar vínculo','approval','hard','Reúne site, bio, notícia, empresa e outras evidências.','Aprova relação influencer–marca.'],
+          ['IF-03','Buscar no marketplace','experimental','medium','Consulta JoomPulse/web e registra sellers/listings.','Revisa resultado inconclusivo.'],
+          ['IF-04','Verificar loja oficial','approval','hard','Avalia operação oficial/própria/madura com evidências.','Confirma a classificação.'],
+          ['IF-05','Registrar marca qualificada','auto','easy','Cria/vincula conta sem misturar marca, empresa e pessoa.','Nenhuma ação recorrente.'],
+          ['IF-06','Mapear canais públicos','assisted','hard','Sugere Instagram, e-mail, LinkedIn, site e contatos profissionais.','Valida origem e se o canal é apropriado.'],
+          ['IF-07','Mapear dono/influenciador','approval','hard','Cria pessoas e papéis separados com evidência.','Confirma identidade e poder de decisão.'],
+          ['IF-08','Fixar ordem de contato','auto','medium','Calcula marca → comercial → dono → influenciador.','Aprova política inicial.'],
+          ['IF-IG','Instagram frio','assisted','hard','Prepara perfil, mensagem e tarefa.','Envia manualmente; API não inicia DM fria.'],
+          ['IF-EM','E-mail profissional','approval','medium','Gera draft 1:1 com evidência e opt-out.','Revisa primeiro toque; API pode enviar.'],
+          ['IF-WA','WhatsApp','blocked','hard','Bloqueia se não houver opt-in/janela/template válido.','Não usar número encontrado como autorização.'],
+          ['IF-LI','LinkedIn','assisted','medium','Prepara texto, perfil e cadência.','Executa convite/DM e confirma.'],
+          ['IF-NEXT','Próximo canal elegível','auto','hard','Considera supressão, frequência, resposta e canal esgotado.','Decide quando nenhum canal é adequado.'],
+          ['IF-R','Resposta e qualificação','human','medium','Pausa todos os canais e reúne histórico.','Conduz conversa e decide oportunidade.'],
+          ['IF-90','Reativação','approval','medium','Espera 90 dias ou evento novo e propõe nova abordagem.','Confirma que há contexto realmente novo.']
+        ]
+      }
+    ];
+
+    const integrations = [
+      ['Claude na VPS','experimental','Pesquisa, diagnóstico, rascunhos e estruturação.','Limites da assinatura são compartilhados e sem SLA.','Fila, health, retry, revisão e futura rota API.'],
+      ['JoomPulse MCP','experimental','Sinais de mercado, produtos, sellers e estimativas.','Confirmar automação desassistida, cota, persistência e plano.','Spike de 10 casos; importação assistida enquanto isso.'],
+      ['Site / formulários','auto','Captura, consentimento, UTM e origem.','Contrato de evento e deduplicação precisam ser corretos.','Webhook assinado e idempotente.'],
+      ['Resend','auto','Diagnóstico, materiais, newsletter e webhooks.','Reputação, DNS, consentimento e supressão.','Reaproveitar base existente.'],
+      ['WhatsApp Cloud API','approval','Inbound, respostas e templates aprovados.','Opt-in; janela de 24h; template fora dela.','Nunca transformar telefone encontrado em permissão.'],
+      ['Gmail API','approval','Draft, envio 1:1, thread e resposta.','OAuth, reputação e limites da caixa.','App interno Workspace e aprovação inicial.'],
+      ['Google Calendar','auto','Disponibilidade, evento, Meet e sincronização.','OAuth/admin; não usar convite como cold outreach.','Automatizar após manifestação de interesse.'],
+      ['LinkedIn — convite/DM','assisted','CRM prepara perfil, texto, prazo e registro.','Sem API pública comum; automação/scraping cria risco.','Pessoa clica, confirma e o CRM avança.'],
+      ['LinkedIn — publicação','approval','Publicar no perfil que autorizou o app.','Cada autor precisa OAuth; analytics/Page são separados.','Começar assistido e ativar publisher depois.'],
+      ['Instagram — publicação','approval','Imagem, carrossel e Reel em conta Professional.','Conta pessoal não serve; App Review/permissões.','Pacote manual até o publisher estar aprovado.'],
+      ['Instagram — mensagens','auto','Receber e responder conversa iniciada pelo usuário.','Não inicia DM fria oficial.','Cold DM vira tarefa humana.'],
+      ['YouTube','approval','Upload privado, agenda e métricas.','Projeto não auditado pode publicar só privado via API.','Upload/publicação manual enquanto audita.'],
+      ['TikTok','assisted','Upload ao inbox e leitura autorizada, se aprovado.','Direct Post não é premissa válida para utilitário interno.','Mirto revisa e finaliza no app.'],
+      ['CapCut / Pippit','human','CRM organiza briefing, assets, SRT, versões e aprovação.','Sem API geral pública comprovada para timeline/render.','Editor trabalha no SaaS e devolve export.'],
+      ['Blog / site','approval','Workflow, preview e publicação por deploy.','Hoje não há CMS editorial completo.','Começar por código; headless depois.'],
+      ['Trello','assisted','Importação e possível espelho temporário.','Bidirecional cria conflito e duas fontes da verdade.','Migrar e aposentar gradualmente.']
+    ];
+
+    const badge = mode => `<span class="badge ${mode}">${modes[mode].label}</span>`;
+    const diff = level => `<span class="difficulty ${level}">${difficulties[level]}</span>`;
+
+    function renderStep(row) {
+      const [code,title,mode,difficulty,system,human] = row;
+      return `<article class="step" data-mode="${mode}">
+        <div class="step-code">${code}</div>
+        <div class="step-title">${title}</div>
+        <div>${badge(mode)}</div>
+        <div class="step-copy"><strong>O CRM prepara/faz</strong>${system}</div>
+        <div class="step-copy human-action"><strong>A pessoa faz</strong>${human}</div>
+        <div>${diff(difficulty)}</div>
+      </article>`;
+    }
+
+    function renderFilters(containerId) {
+      const wrap = document.querySelector(`[data-filter-for="${containerId}"]`);
+      if (!wrap) return;
+      const choices = [['all','Mostrar tudo'], ...Object.entries(modes).map(([key,value]) => [key,value.label])];
+      wrap.innerHTML = choices.map(([key,label],i) => `<button class="filter-btn ${i===0?'active':''}" data-filter="${key}" type="button">${label}</button>`).join('');
+      wrap.addEventListener('click', event => {
+        const button = event.target.closest('.filter-btn');
+        if (!button) return;
+        wrap.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        button.classList.add('active');
+        const mode = button.dataset.filter;
+        document.querySelectorAll(`#${containerId} .step`).forEach(step => step.classList.toggle('filtered-out', mode !== 'all' && step.dataset.mode !== mode));
+      });
+    }
+
+    document.getElementById('legendGrid').innerHTML = Object.entries(modes).map(([key,value]) => `<div class="card legend-card">${badge(key)}<strong>${value.title}</strong><p>${value.text}</p></div>`).join('');
+
+    document.getElementById('flowCards').innerHTML = flows.map(flow => `<article class="card flow-card">
+      <div class="flow-top"><span class="flow-num">Fluxo ${flow.no}</span><span class="kind">${flow.kind}</span></div>
+      <h3>${flow.title}</h3><p>${flow.short}</p><div class="route">${flow.route}</div>
+      <div class="card-foot"><span class="difficulty ${flow.complexity.includes('Muito')||flow.complexity==='Alta'?'hard':flow.complexity.includes('Moderada')?'medium':'easy'}">${flow.complexity}</span><a class="go-link" href="#${flow.id}">Abrir fluxo →</a></div>
+    </article>`).join('');
+
+    document.getElementById('inboundSteps').innerHTML = inboundSteps.map(renderStep).join('');
+    renderFilters('inboundSteps');
+
+    document.getElementById('flowSections').innerHTML = flows.map(flow => `<section class="presentation-section" id="${flow.id}" data-nav="${flow.title}">
+      <div class="section-head"><div><div class="section-kicker">Fluxo ${flow.no} · ${flow.kind}</div><h2>${flow.title}</h2></div><p class="section-intro">${flow.overview}</p></div>
+      <div class="flow-summary">
+        <div class="card summary-main">${badge(flow.viability.includes('Alta')?'auto':'approval')}<div class="route">${flow.route}</div><p>${flow.short}</p></div>
+        <div class="summary-side">
+          <div class="metric"><span>Viabilidade</span><strong>${flow.viability}</strong></div>
+          <div class="metric"><span>Complexidade</span><strong>${flow.complexity}</strong></div>
+          <div class="metric"><span>Ordem</span><strong>${flow.cut}</strong></div>
+          <div class="metric"><span>Restrição-chave</span><strong>${flow.constraint}</strong></div>
+        </div>
+      </div>
+      <div class="callouts">
+        <div class="callout"><span class="label">Mais tranquilo</span><strong>Fundação controlável</strong><p>${flow.calm}</p></div>
+        <div class="callout"><span class="label">Mais complexo</span><strong>Exige validação</strong><p>${flow.tricky}</p></div>
+        <div class="callout"><span class="label">Princípio</span><strong>Fallback sempre disponível</strong><p>Se uma API não estiver pronta, a tarefa assistida mantém o fluxo operacional e rastreável.</p></div>
+      </div>
+      <div class="step-toolbar" data-filter-for="steps-${flow.id}"></div>
+      <div class="steps" id="steps-${flow.id}">${flow.steps.map(renderStep).join('')}</div>
+    </section>`).join('');
+    flows.forEach(flow => renderFilters(`steps-${flow.id}`));
+
+    document.getElementById('integrationTable').innerHTML = `<thead><tr><th>Integração</th><th>Modelo</th><th>O que permite</th><th>Limitação principal</th><th>Como entra no CRM</th></tr></thead><tbody>${integrations.map(row => `<tr><td>${row[0]}</td><td>${badge(row[1])}</td><td>${row[2]}</td><td>${row[3]}</td><td>${row[4]}</td></tr>`).join('')}</tbody>`;
+
+    const sections = [...document.querySelectorAll('.presentation-section')];
+    const sidebar = document.getElementById('sidebar');
+    sidebar.innerHTML = `<div class="nav-label">Apresentação</div>${sections.map((section,i) => `<a class="nav-link" href="#${section.id}"><span class="nav-index">${String(i+1).padStart(2,'0')}</span><span>${section.dataset.nav}</span></a>`).join('')}`;
+
+    const navLinks = [...sidebar.querySelectorAll('.nav-link')];
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        navLinks.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${entry.target.id}`));
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    sections.forEach(section => observer.observe(section));
+
+    window.addEventListener('scroll', () => {
+      const max = document.documentElement.scrollHeight - innerHeight;
+      document.getElementById('progress').style.width = `${max > 0 ? scrollY / max * 100 : 0}%`;
+    }, { passive:true });
+
+    let slideIndex = 0;
+    const updateSlide = () => {
+      sections.forEach((section,i) => section.classList.toggle('active-slide', i === slideIndex));
+      document.getElementById('slideCount').textContent = `${slideIndex + 1} / ${sections.length}`;
+      sections[slideIndex].scrollTop = 0;
+    };
+    const enterPresentation = () => {
+      const visible = sections.findIndex(section => section.getBoundingClientRect().top >= -100 && section.getBoundingClientRect().top < innerHeight * .5);
+      slideIndex = visible >= 0 ? visible : 0;
+      document.body.classList.add('presenting'); updateSlide();
+    };
+    const exitPresentation = () => {
+      document.body.classList.remove('presenting');
+      sections.forEach(section => section.classList.remove('active-slide'));
+      sections[slideIndex].scrollIntoView();
+    };
+    const moveSlide = delta => { slideIndex = Math.max(0, Math.min(sections.length - 1, slideIndex + delta)); updateSlide(); };
+
+    document.getElementById('presentBtn').addEventListener('click', enterPresentation);
+    document.getElementById('exitPresent').addEventListener('click', exitPresentation);
+    document.getElementById('prevSlide').addEventListener('click', () => moveSlide(-1));
+    document.getElementById('nextSlide').addEventListener('click', () => moveSlide(1));
+    document.getElementById('printBtn').addEventListener('click', () => window.print());
+    document.addEventListener('keydown', event => {
+      if ((event.key === 'p' || event.key === 'P') && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) document.body.classList.contains('presenting') ? exitPresentation() : enterPresentation();
+      if (!document.body.classList.contains('presenting')) return;
+      if (['ArrowRight','PageDown',' '].includes(event.key)) { event.preventDefault(); moveSlide(1); }
+      if (['ArrowLeft','PageUp'].includes(event.key)) { event.preventDefault(); moveSlide(-1); }
+      if (event.key === 'Escape') exitPresentation();
+    });
+  </script>
+</body>
+</html>
